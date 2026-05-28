@@ -1080,23 +1080,26 @@ const AdminViews = {
   },
 
   async sendShiftSummaries() {
-    const ok = await UI.confirm(
-      'Pošle každému zaměstnanci jeden souhrnný email se všemi jeho nadcházejícími potvrzenými směnami. Pokračovat?',
-      'Odeslat souhrny'
-    );
-    if (!ok) return;
+    const interval = await this._pickSummaryInterval();
+    if (!interval) return;
 
     try {
       UI.showLoading('Načítám směny...');
 
-      const today = new Date().toISOString().split('T')[0];
+      const today = new Date();
+      const dateFrom = today.toISOString().split('T')[0];
+      const dateTo = new Date(today);
+      if (interval === 'week') dateTo.setDate(today.getDate() + 7);
+      else dateTo.setMonth(today.getMonth() + 1);
+      const dateToBound = dateTo.toISOString().split('T')[0];
 
-      // Načti všechny budoucí potvrzené směny včetně zaměstnanců
+      // Načti potvrzené směny v daném intervalu včetně zaměstnanců
       const { data: shifts, error } = await getSupabase()
         .from('shifts')
         .select('id, date, start_time, end_time, employees(id, name, email)')
         .eq('is_confirmed', true)
-        .gte('date', today)
+        .gte('date', dateFrom)
+        .lte('date', dateToBound)
         .order('date');
 
       if (error) throw error;
@@ -1138,6 +1141,34 @@ const AdminViews = {
       UI.hideLoading();
       UI.toast('Chyba: ' + e.message, 'error');
     }
+  },
+
+  _pickSummaryInterval() {
+    return new Promise(resolve => {
+      const el = document.createElement('div');
+      el.className = 'modal-overlay active';
+      el.innerHTML = `
+        <div class="modal" style="max-width:340px">
+          <div class="modal-header">
+            <h2 class="modal-title">📧 Odeslat souhrny směn</h2>
+            <button class="btn btn-ghost modal-close">×</button>
+          </div>
+          <div class="modal-body">
+            <p style="color:#374151;margin-bottom:16px">Za jaké období odeslat souhrn zaměstnancům?</p>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <button class="btn btn-primary" id="pick-week">📅 Příští týden <small style="opacity:.7">(7 dní)</small></button>
+              <button class="btn btn-secondary" id="pick-month">📅 Příští měsíc <small style="opacity:.7">(30 dní)</small></button>
+              <button class="btn btn-ghost" id="pick-cancel">Zrušit</button>
+            </div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(el);
+      el.querySelector('#pick-week').onclick   = () => { el.remove(); resolve('week'); };
+      el.querySelector('#pick-month').onclick  = () => { el.remove(); resolve('month'); };
+      el.querySelector('#pick-cancel').onclick = () => { el.remove(); resolve(null); };
+      el.querySelector('.modal-close').onclick = () => { el.remove(); resolve(null); };
+    });
   },
 
   async toggleConfirmShift(id, currentlyConfirmed, employeeId, dateStr) {

@@ -5,6 +5,43 @@
 
 const Notifications = {
 
+  // České 5. pád (vokativ) pro jméno zaměstnance
+  // Formát jména je "Příjmení Jméno" — bereme poslední slovo (křestní jméno)
+  _toVocative(fullName) {
+    if (!fullName) return fullName;
+    const parts = fullName.trim().split(/\s+/);
+    const first = parts[parts.length - 1];
+    return this._czechVocative(first);
+  },
+
+  _czechVocative(name) {
+    if (!name || name.length < 2) return name;
+    const l = name.toLowerCase();
+
+    // Beze změny
+    if (l.endsWith('í') || l.endsWith('ie') || l.endsWith('i') || l.endsWith('y') || l.endsWith('e'))
+      return name;
+
+    // Ženská jména na -a → -o (Jana→Jano, Petra→Petro, Karolína→Karolíno)
+    if (l.endsWith('a')) return name.slice(0, -1) + 'o';
+
+    // Mužská — specifické vzory (od nejspecifičtějšího)
+    if (l.endsWith('ek'))  return name.slice(0, -2) + 'ku';   // Marek→Marku, Zdeněk→Zdeňku
+    if (l.endsWith('el'))  return name.slice(0, -2) + 'le';   // Pavel→Pavle, Karel→Karle
+    if (l.endsWith('ej'))  return name + 'i';                  // Ondřej→Ondřeji
+    if (l.endsWith('áš') || l.endsWith('eš') || l.endsWith('iš') || l.endsWith('uš'))
+      return name + 'i';                                        // Tomáš→Tomáši, Aleš→Aleši
+    if (l.endsWith('ík') || l.endsWith('ik')) return name + 'u'; // Dominik→Dominiku
+    if (l.endsWith('an')) return name.slice(0, -2) + 'ane';    // Jan→Jane, Roman→Romane
+    if (l.endsWith('in')) return name.slice(0, -2) + 'ine';    // Martin→Martine
+    if (l.endsWith('on')) return name.slice(0, -2) + 'one';    // Šimon→Šimone
+
+    // Obecné mužské (souhláska) → přidej -e
+    if ('bcdfghjklmnprstvz'.includes(l[l.length - 1])) return name + 'e';
+
+    return name;
+  },
+
   // Formátuje datum YYYY-MM-DD na český formát D. M. YYYY
   _formatDate(dateStr) {
     if (!dateStr) return '';
@@ -18,6 +55,7 @@ const Notifications = {
     const payload = {
       event,
       employee_name: employeeName || '',
+      employee_vocative: this._toVocative(employeeName || ''),
       employee_email: employeeEmail,
       ...extraData
     };
