@@ -547,6 +547,9 @@ const AdminViews = {
         <div class="page-header">
           <h1>Plánování směn</h1>
           <div class="header-controls">
+            <button class="btn btn-primary btn-sm" onclick="AdminViews.sendShiftSummaries()" title="Pošle každému zaměstnanci jeden souhrnný email se všemi nadcházejícími směnami">
+              📧 Odeslat souhrny
+            </button>
             <select class="form-control form-control-sm" id="role-filter" onchange="AdminViews.roleFilter=this.value;AdminViews.showShifts()">
               <option value="all"       ${this.roleFilter==='all'       ?'selected':''}>Všichni</option>
               <option value="lifeguard" ${this.roleFilter==='lifeguard' ?'selected':''}>Plavčíci</option>
@@ -965,7 +968,7 @@ const AdminViews = {
       } else {
         const newShift = await Shifts.create(payload);
         UI.toast('Směna přidána', 'success');
-        Notifications.sendForShift('shift_confirmed', newShift.id);
+        // Individuální email se neposílá — zaměstnanec dostane souhrnný email přes tlačítko "Odeslat souhrny"
       }
       UI.hideLoading();
       // Refresh — vrátit se zpět tam, odkud byl modal otevřen
@@ -1076,6 +1079,67 @@ const AdminViews = {
     }
   },
 
+  async sendShiftSummaries() {
+    const ok = await UI.confirm(
+      'Pošle každému zaměstnanci jeden souhrnný email se všemi jeho nadcházejícími potvrzenými směnami. Pokračovat?',
+      'Odeslat souhrny'
+    );
+    if (!ok) return;
+
+    try {
+      UI.showLoading('Načítám směny...');
+
+      const today = new Date().toISOString().split('T')[0];
+
+      // Načti všechny budoucí potvrzené směny včetně zaměstnanců
+      const { data: shifts, error } = await getSupabase()
+        .from('shifts')
+        .select('id, date, start_time, end_time, employees(id, name, email)')
+        .eq('is_confirmed', true)
+        .gte('date', today)
+        .order('date');
+
+      if (error) throw error;
+      if (!shifts || shifts.length === 0) {
+        UI.hideLoading();
+        UI.toast('Žádné nadcházející potvrzené směny k odeslání', 'warning');
+        return;
+      }
+
+      // Seskup podle zaměstnance
+      const byEmployee = {};
+      for (const s of shifts) {
+        if (!s.employees?.email) continue;
+        const empId = s.employees.id;
+        if (!byEmployee[empId]) {
+          byEmployee[empId] = { name: s.employees.name, email: s.employees.email, shifts: [] };
+        }
+        byEmployee[empId].shifts.push(s);
+      }
+
+      const employees = Object.values(byEmployee);
+      if (employees.length === 0) {
+        UI.hideLoading();
+        UI.toast('Žádní zaměstnanci s emailem a nadcházejícími směnami', 'warning');
+        return;
+      }
+
+      UI.hideLoading();
+
+      // Pošli souhrnný email každému zaměstnanci
+      let sent = 0;
+      for (const emp of employees) {
+        await Notifications.sendShiftSummary(emp.name, emp.email, emp.shifts);
+        sent++;
+      }
+
+      UI.toast(`✓ Souhrny odeslány ${sent} zaměstnancům`, 'success');
+    } catch (e) {
+      UI.hideLoading();
+      UI.toast('Chyba: ' + e.message, 'error');
+    }
+  },
+
   async toggleConfirmShift(id, currentlyConfirmed, employeeId, dateStr) {
     const newState = !currentlyConfirmed;
     try {
@@ -1083,8 +1147,7 @@ const AdminViews = {
       await Shifts.update(id, { is_confirmed: newState });
       UI.hideLoading();
       UI.toast(newState ? 'Směna potvrzena' : 'Potvrzení zrušeno', newState ? 'success' : 'warning');
-      // Notifikace — pouze při potvrzení (ne při zrušení)
-      if (newState) Notifications.sendForShift('shift_confirmed', id);
+      // Individuální email se neposílá — zaměstnanec dostane souhrnný email přes tlačítko "Odeslat souhrny"
       if (employeeId) {
         UI.closeModal();
         this.showEmployeeDetail(employeeId);
