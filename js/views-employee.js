@@ -526,7 +526,8 @@ const EmployeeViews = {
     this.shMonth++;
     if (this.shMonth > 12) { this.shMonth = 1; this.shYear++; }
     this._renderMyShifts();
-  }
+  },
+
   // ─── Profil zaměstnance ──────────────────────────────────────
 
   async showProfile() {
