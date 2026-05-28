@@ -28,6 +28,7 @@ const EmployeeViews = {
         <a class="nav-item" id="nav-emp-dashboard" onclick="EmployeeViews.showDashboard()">🏠 Přehled</a>
         <a class="nav-item" id="nav-emp-availability" onclick="EmployeeViews.showAvailability()">📅 Moje dostupnost</a>
         <a class="nav-item" id="nav-emp-shifts" onclick="EmployeeViews.showMyShifts()">🕐 Moje směny</a>
+        <a class="nav-item" id="nav-emp-profile" onclick="EmployeeViews.showProfile()">👤 Můj profil</a>
       </nav>
       <button class="btn btn-ghost nav-logout" onclick="App.logout()">Odhlásit</button>
     `;
@@ -526,6 +527,152 @@ const EmployeeViews = {
     if (this.shMonth > 12) { this.shMonth = 1; this.shYear++; }
     this._renderMyShifts();
   }
+  // ─── Profil zaměstnance ──────────────────────────────────────
+
+  async showProfile() {
+    UI.setActiveNav('emp-profile');
+    document.getElementById('topbar-title').textContent = 'Můj profil';
+    const main = document.getElementById('app-main');
+    const u = this.currentUser;
+
+    const birthFormatted = u.birth_date
+      ? new Date(u.birth_date).toLocaleDateString('cs-CZ')
+      : '—';
+    const ageInfo = u.birth_date ? (() => {
+      const b = new Date(u.birth_date), today = new Date();
+      let age = today.getFullYear() - b.getFullYear();
+      if (today < new Date(today.getFullYear(), b.getMonth(), b.getDate())) age--;
+      return age;
+    })() : null;
+
+    main.innerHTML = `
+      <div class="page-header">
+        <h1>👤 Můj profil</h1>
+      </div>
+
+      <div class="card" style="max-width:520px">
+        <h2 class="card-title">Osobní údaje</h2>
+
+        <div class="form-group">
+          <label class="form-label">Jméno</label>
+          <div class="form-static">${escapeHtml(u.name)}</div>
+          <small class="form-hint">Jméno může změnit pouze admin.</small>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Uživatelské jméno</label>
+          <div class="form-static">@${escapeHtml(u.username || '—')}</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">E-mail pro notifikace *</label>
+          <input type="email" id="prof-email" class="form-control"
+            value="${escapeHtml(u.email || '')}" placeholder="tvuj@email.cz">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Datum narození</label>
+          <input type="date" id="prof-birth" class="form-control"
+            value="${u.birth_date || ''}"
+            max="${new Date().toISOString().split('T')[0]}">
+          ${ageInfo !== null ? `<small class="form-hint">Věk: <strong>${ageInfo} let</strong>${u.is_minor ? ' — mladistvý 👦' : ' — plnoletý ✅'}</small>` : ''}
+        </div>
+
+        <button class="btn btn-primary" onclick="EmployeeViews.saveProfile()">Uložit údaje</button>
+      </div>
+
+      <div class="card" style="max-width:520px;margin-top:16px">
+        <h2 class="card-title">Změna hesla</h2>
+
+        <div class="form-group">
+          <label class="form-label">Nové heslo (min. 6 znaků)</label>
+          <input type="password" id="prof-pass1" class="form-control" placeholder="••••••••">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Nové heslo znovu</label>
+          <input type="password" id="prof-pass2" class="form-control" placeholder="••••••••"
+            onkeydown="if(event.key==='Enter')EmployeeViews.changePassword()">
+        </div>
+        <p id="prof-pass-error" class="form-error" style="display:none"></p>
+        <button class="btn btn-secondary" onclick="EmployeeViews.changePassword()">Změnit heslo</button>
+      </div>
+    `;
+  },
+
+  async saveProfile() {
+    const email = document.getElementById('prof-email')?.value.trim();
+    const birth = document.getElementById('prof-birth')?.value || null;
+
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      UI.toast('Zadej platnou e-mailovou adresu', 'error'); return;
+    }
+
+    // Přepočítej is_minor z data narození
+    let isMinor = this.currentUser.is_minor;
+    if (birth) {
+      const b = new Date(birth), today = new Date();
+      let age = today.getFullYear() - b.getFullYear();
+      if (today < new Date(today.getFullYear(), b.getMonth(), b.getDate())) age--;
+      isMinor = age < 18;
+    }
+
+    try {
+      UI.showLoading('Ukládám...');
+      const updates = { email, is_minor: isMinor };
+      if (birth) updates.birth_date = birth;
+
+      const { error } = await getSupabase()
+        .from('employees').update(updates).eq('id', this.currentUser.id);
+      if (error) throw error;
+
+      // Aktualizuj lokální objekt
+      this.currentUser = { ...this.currentUser, email, is_minor: isMinor, birth_date: birth || this.currentUser.birth_date };
+      App._currentEmployee = this.currentUser;
+
+      UI.hideLoading();
+      UI.toast('Údaje uloženy ✓', 'success');
+      await this.showProfile(); // překresli s novými hodnotami
+    } catch (e) {
+      UI.hideLoading();
+      UI.toast('Chyba ukládání: ' + e.message, 'error');
+    }
+  },
+
+  async changePassword() {
+    const pass1 = document.getElementById('prof-pass1')?.value;
+    const pass2 = document.getElementById('prof-pass2')?.value;
+    const errEl = document.getElementById('prof-pass-error');
+    errEl.style.display = 'none';
+
+    if (!pass1 || pass1.length < 6) {
+      errEl.textContent = 'Heslo musí mít alespoň 6 znaků';
+      errEl.style.display = 'block'; return;
+    }
+    if (pass1 !== pass2) {
+      errEl.textContent = 'Hesla se neshodují';
+      errEl.style.display = 'block'; return;
+    }
+
+    try {
+      UI.showLoading('Měním heslo...');
+      const { error } = await getSupabase().auth.updateUser({ password: pass1 });
+      if (error) throw error;
+
+      // Ulož nové heslo do tabulky employees pro případ zapomenutí
+      await getSupabase().from('employees')
+        .update({ stored_password: pass1 })
+        .eq('id', this.currentUser.id);
+
+      UI.hideLoading();
+      UI.toast('Heslo bylo změněno ✓', 'success');
+      document.getElementById('prof-pass1').value = '';
+      document.getElementById('prof-pass2').value = '';
+    } catch (e) {
+      UI.hideLoading();
+      UI.toast('Chyba změny hesla: ' + e.message, 'error');
+    }
+  }
+
 };
 
 // Radio button interaktivita — toggle třídy selected a zobrazení time range

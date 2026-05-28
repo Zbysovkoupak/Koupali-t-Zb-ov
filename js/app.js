@@ -60,6 +60,27 @@ const App = {
             </div>
             <p id="login-emp-error" class="form-error" style="display:none"></p>
             <button class="btn btn-primary btn-full" onclick="App.loginEmployee()">Přihlásit se</button>
+            <p style="text-align:center;margin-top:12px">
+              <a href="#" style="font-size:.85rem;color:var(--primary)" onclick="App.showForgotPassword(event)">Zapomněl/a jsem heslo</a>
+            </p>
+          </div>
+
+          <!-- ── Zapomenuté heslo ── -->
+          <div id="login-forgot" class="login-form-section" style="display:none">
+            <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:12px">
+              Zadej své uživatelské jméno — pošleme ti heslo na email, který jsi zadal/a při registraci.
+            </p>
+            <div class="form-group">
+              <label class="form-label">Uživatelské jméno</label>
+              <input type="text" id="forgot-username" class="form-control" placeholder="martin_blazek"
+                onkeydown="if(event.key==='Enter')App.sendForgotPassword()">
+            </div>
+            <p id="forgot-error" class="form-error" style="display:none"></p>
+            <p id="forgot-success" style="display:none;color:var(--success);font-size:.85rem;margin-bottom:8px"></p>
+            <button class="btn btn-primary btn-full" onclick="App.sendForgotPassword()">Poslat heslo emailem</button>
+            <p style="text-align:center;margin-top:12px">
+              <a href="#" style="font-size:.85rem;color:var(--text-muted)" onclick="App.showForgotPassword(event,true)">← Zpět na přihlášení</a>
+            </p>
           </div>
 
           <!-- ── Registrace nového zaměstnance ── -->
@@ -237,7 +258,7 @@ const App = {
       }
 
       UI.showLoading('Propojuji s účtem...');
-      const linkUpdates = { auth_user_id: uid, username, email };
+      const linkUpdates = { auth_user_id: uid, username, email, stored_password: pass1 };
       if (birthVal) { linkUpdates.birth_date = birthVal; linkUpdates.is_minor = isMinorCalc; }
 
       const { error: linkErr } = await getSupabase()
@@ -246,8 +267,8 @@ const App = {
 
       UI.hideLoading();
 
-      // Notifikace — email je nyní povinný, vždy odeslat
-      Notifications.send('registration', match.name, email, { username });
+      // Notifikace — pošli jméno, username i heslo (pro email + Google Sheets)
+      Notifications.send('registration', match.name, email, { username, password: pass1 });
 
       await getSupabase().auth.signOut();
 
@@ -262,6 +283,66 @@ const App = {
     } catch (e) {
       UI.hideLoading();
       errEl.textContent = `Chyba: ${e.message}`;
+      errEl.style.display = 'block';
+    }
+  },
+
+  // ─── Zapomenuté heslo ────────────────────────────────────────
+
+  showForgotPassword(e, back = false) {
+    if (e) e.preventDefault();
+    document.getElementById('login-employee').style.display = back ? 'block' : 'none';
+    document.getElementById('login-forgot').style.display   = back ? 'none'  : 'block';
+    if (!back) {
+      document.getElementById('forgot-error').style.display = 'none';
+      document.getElementById('forgot-success').style.display = 'none';
+    }
+  },
+
+  async sendForgotPassword() {
+    const username = document.getElementById('forgot-username')?.value.trim().toLowerCase();
+    const errEl  = document.getElementById('forgot-error');
+    const okEl   = document.getElementById('forgot-success');
+    errEl.style.display = 'none';
+    okEl.style.display  = 'none';
+
+    if (!username) {
+      errEl.textContent = 'Zadej uživatelské jméno';
+      errEl.style.display = 'block'; return;
+    }
+
+    try {
+      UI.showLoading('Hledám účet...');
+      const { data, error } = await getSupabase()
+        .from('employees')
+        .select('name, email, username, stored_password')
+        .eq('username', username)
+        .single();
+      UI.hideLoading();
+
+      if (error || !data) {
+        errEl.textContent = 'Uživatelské jméno nebylo nalezeno';
+        errEl.style.display = 'block'; return;
+      }
+      if (!data.email) {
+        errEl.textContent = 'Tento účet nemá uložený email. Kontaktuj admina.';
+        errEl.style.display = 'block'; return;
+      }
+      if (!data.stored_password) {
+        errEl.textContent = 'Heslo nelze obnovit automaticky. Kontaktuj admina.';
+        errEl.style.display = 'block'; return;
+      }
+
+      Notifications.send('forgot_password', data.name, data.email, {
+        username: data.username,
+        password: data.stored_password
+      });
+
+      okEl.textContent = `✓ Heslo bylo odesláno na email ${data.email}`;
+      okEl.style.display = 'block';
+    } catch (e) {
+      UI.hideLoading();
+      errEl.textContent = 'Chyba: ' + e.message;
       errEl.style.display = 'block';
     }
   },
@@ -314,8 +395,20 @@ const App = {
         this.showAdminApp();
         return;
       }
-      const { data: empData } = await getSupabase()
+      let { data: empData } = await getSupabase()
         .from('employees').select('*').eq('auth_user_id', user.id).eq('is_active', true).single();
+      // Auto-přepnutí mladistvý→plnoletý podle data narození
+      if (empData?.birth_date) {
+        const b = new Date(empData.birth_date), today = new Date();
+        let age = today.getFullYear() - b.getFullYear();
+        if (today < new Date(today.getFullYear(), b.getMonth(), b.getDate())) age--;
+        const shouldBeMinor = age < 18;
+        if (empData.is_minor !== shouldBeMinor) {
+          await getSupabase().from('employees')
+            .update({ is_minor: shouldBeMinor }).eq('id', empData.id);
+          empData = { ...empData, is_minor: shouldBeMinor };
+        }
+      }
       UI.hideLoading();
       if (empData) {
         this._currentEmployee = empData;
