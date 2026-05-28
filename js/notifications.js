@@ -43,10 +43,16 @@ const Notifications = {
         .eq('id', shiftId)
         .single();
       if (!data?.employees?.email) return;
+      // Sestavíme datetime řetězce pro kalendářové odkazy (yyyyMMddTHHmmss)
+      const datePart = data.date.replace(/-/g, '');
+      const startDt  = datePart + 'T' + data.start_time.replace(/:/g, '').substring(0, 6);
+      const endDt    = datePart + 'T' + data.end_time.replace(/:/g, '').substring(0, 6);
       this.send(event, data.employees.name, data.employees.email, {
         date: this._formatDate(data.date),
         start_time: data.start_time,
-        end_time: data.end_time
+        end_time: data.end_time,
+        start_dt: startDt,
+        end_dt: endDt
       });
     } catch (e) {
       console.warn('Notifikace — chyba načtení dat:', e.message);
