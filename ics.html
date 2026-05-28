@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <title>Přidat směnu do kalendáře</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f0f4f8; }
+    .box { background: white; border-radius: 12px; padding: 32px; text-align: center; box-shadow: 0 4px 20px rgba(0,0,0,.1); max-width: 340px; }
+    .icon { font-size: 3rem; }
+    h2 { margin: 12px 0 4px; }
+    p { color: #666; font-size: .9rem; }
+  </style>
+</head>
+<body>
+<div class="box">
+  <div class="icon">📅</div>
+  <h2>Přidávám do kalendáře…</h2>
+  <p id="info">Probíhá stahování události.</p>
+</div>
+<script>
+(function() {
+  const p = new URLSearchParams(window.location.search);
+  const start = p.get('start');   // yyyyMMddTHHmmss
+  const end   = p.get('end');     // yyyyMMddTHHmmss
+  const title = p.get('title') || 'Směna Koupaliště Zbysov';
+
+  if (!start || !end) {
+    document.getElementById('info').textContent = 'Chybí parametry (start, end).';
+    return;
+  }
+
+  const uid = 'smena-' + start + '@koupaliste-zbysov';
+  const now = new Date().toISOString().replace(/[-:]/g,'').split('.')[0] + 'Z';
+
+  const ics = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Koupaliště Zbysov//Směny//CS',
+    'BEGIN:VEVENT',
+    'UID:' + uid,
+    'DTSTAMP:' + now,
+    'DTSTART:' + start,
+    'DTEND:' + end,
+    'SUMMARY:' + title,
+    'DESCRIPTION:Směna na Koupališti Zbysov',
+    'END:VEVENT',
+    'END:VCALENDAR'
+  ].join('\r\n');
+
+  const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = 'smena.ics';
+  document.body.appendChild(a);
+  a.click();
+  URL.revokeObjectURL(url);
+  document.getElementById('info').textContent = 'Soubor byl stažen. Otevři ho pro přidání do Apple Kalendáře.';
+})();
+</script>
+</body>
+</html>
