@@ -7,6 +7,7 @@ const AdminViews = {
   currentMonth: new Date().getMonth() + 1,
   currentYear:  new Date().getFullYear(),
   roleFilter:   'all',
+  shiftsView:   'grid', // 'calendar' | 'grid'
 
   init() {
     this.renderNav();
@@ -733,6 +734,10 @@ const AdminViews = {
               <option value="maintenance" ${this.roleFilter==='maintenance' ?'selected':''}>Údržba</option>
               <option value="chemist"     ${this.roleFilter==='chemist'     ?'selected':''}>Chemici</option>
             </select>
+            <div class="btn-group" style="display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+              <button class="btn btn-sm ${this.shiftsView!=='grid'?'btn-primary':'btn-ghost'}" onclick="AdminViews.shiftsView='calendar';AdminViews.showShifts()" title="Kalendář">📅</button>
+              <button class="btn btn-sm ${this.shiftsView==='grid'?'btn-primary':'btn-ghost'}" onclick="AdminViews.shiftsView='grid';AdminViews.showShifts()" title="Přehled">⊞</button>
+            </div>
             <div class="month-nav">
               <button class="btn btn-ghost" onclick="AdminViews.shiftsPrevMonth()">‹</button>
               <span class="month-label">${CZ_MONTHS[month - 1]} ${year}</span>
@@ -741,8 +746,11 @@ const AdminViews = {
           </div>
         </div>
 
-        <div class="card">
-          ${this._renderShiftCalendar(year, month, employees, shiftsByDate, avIndex, holidays)}
+        <div class="${this.shiftsView==='grid' ? '' : 'card'}">
+          ${this.shiftsView === 'grid'
+            ? this._renderShiftGrid(year, month, employees, shiftsByDate, avIndex, holidays)
+            : this._renderShiftCalendar(year, month, employees, shiftsByDate, avIndex, holidays)
+          }
         </div>
       `;
     } catch (e) {
@@ -835,6 +843,105 @@ const AdminViews = {
     }
 
     html += `</div></div>`;
+    return html;
+  },
+
+  _renderShiftGrid(year, month, employees, shiftsByDate, avIndex, holidays) {
+    const lastDay = new Date(year, month, 0).getDate();
+    const today   = dateKey(new Date());
+
+    const filteredEmps = this.roleFilter === 'all'
+      ? employees.filter(e => e.role !== 'manager')
+      : employees.filter(e => e.role === this.roleFilter);
+
+    if (filteredEmps.length === 0) return UI.emptyState('Žádní zaměstnanci', '👤');
+
+    // Sestavíme pole dnů
+    const days = [];
+    for (let d = 1; d <= lastDay; d++) {
+      const date = new Date(year, month - 1, d);
+      days.push({ d, key: dateKey(date), type: getDayType(date, holidays), date });
+    }
+
+    // Barvy sloupců hlavičky
+    const dayHeaderStyle = (type, key) => {
+      if (key === today) return 'background:#dbeafe;color:#1e40af;font-weight:700';
+      if (type === 'holiday') return 'background:#fee2e2;color:#991b1b';
+      if (type === 'saturday' || type === 'sunday') return 'background:#eff6ff;color:#3b82f6';
+      return '';
+    };
+
+    const cellStyle = (type, key) => {
+      if (key === today) return 'background:#eff6ff';
+      if (type === 'holiday') return 'background:#fff5f5';
+      if (type === 'saturday' || type === 'sunday') return 'background:#f8faff';
+      return '';
+    };
+
+    const shortName = name => {
+      const parts = name.trim().split(' ');
+      return parts.length >= 2 ? `${parts[0]} ${parts[parts.length-1][0]}.` : parts[0];
+    };
+
+    let html = `
+      <div style="overflow-x:auto">
+        <table class="shift-grid-table">
+          <thead>
+            <tr>
+              <th class="shift-grid-name-col">Zaměstnanec</th>
+              ${days.map(({d, key, type}) => `
+                <th style="${dayHeaderStyle(type, key)}" title="${CZ_DAYS[new Date(year,month-1,d).getDay()]}">
+                  <div>${d}</div>
+                  <div style="font-size:.6rem;font-weight:400">${CZ_DAYS_SHORT[new Date(year,month-1,d).getDay()]}</div>
+                </th>
+              `).join('')}
+            </tr>
+          </thead>
+          <tbody>
+            ${filteredEmps.map(emp => `
+              <tr>
+                <td class="shift-grid-name-col">
+                  <div style="display:flex;align-items:center;gap:6px">
+                    ${UI.avatarHTML(emp.name, 24)}
+                    <span style="font-size:.82rem;white-space:nowrap">${escapeHtml(shortName(emp.name))}</span>
+                  </div>
+                </td>
+                ${days.map(({key, type}) => {
+                  const av     = avIndex[`${emp.id}_${key}`];
+                  const shifts = (shiftsByDate[key] || []).filter(s => s.employee_id === emp.id);
+                  const confirmed = shifts.find(s => s.is_confirmed);
+                  const pending   = shifts.find(s => !s.is_confirmed);
+
+                  let cell = '';
+                  let bg = cellStyle(type, key);
+
+                  if (confirmed) {
+                    const start = confirmed.start_time?.substring(0,5) || '';
+                    const end   = confirmed.end_time?.substring(0,5) || '';
+                    cell = `<div class="sgc-confirmed" onclick="AdminViews.openDayPanel('${key}')" title="${escapeHtml(emp.name)} — potvrzená směna ${start}–${end}">✓<br><span style="font-size:.6rem">${start}</span></div>`;
+                  } else if (pending) {
+                    cell = `<div class="sgc-pending" onclick="AdminViews.openDayPanel('${key}')" title="${escapeHtml(emp.name)} — čeká na potvrzení">○</div>`;
+                  } else if (av?.status === 'available' || av?.status === 'partial') {
+                    cell = `<div class="sgc-want" onclick="AdminViews.openAddShiftModal('${emp.id}','${key}')" title="${escapeHtml(emp.name)} — chce směnu, klikni pro přidání">+</div>`;
+                  } else if (av?.status === 'unavailable') {
+                    cell = `<div class="sgc-cant" title="${escapeHtml(emp.name)} — nemůže">✕</div>`;
+                  }
+
+                  return `<td style="${bg}">${cell}</td>`;
+                }).join('')}
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;padding:12px 16px;border-top:1px solid var(--border);font-size:.78rem;color:var(--text-muted)">
+        <span><span class="sgc-confirmed" style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:.72rem">✓</span> Potvrzená směna</span>
+        <span><span class="sgc-want" style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:.72rem">+</span> Chce směnu (klikni = přidej)</span>
+        <span><span class="sgc-cant" style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:.72rem">✕</span> Nemůže přijít</span>
+        <span><span class="sgc-pending" style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:.72rem">○</span> Čeká na potvrzení</span>
+      </div>
+    `;
+
     return html;
   },
 
