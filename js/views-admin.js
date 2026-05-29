@@ -746,7 +746,7 @@ const AdminViews = {
     const lastDay  = new Date(year, month, 0);
     const seasonEnd = SEASON_END;
     const filteredEmps = this.roleFilter === 'all'
-      ? employees.filter(e => !SELF_LOG_ROLES.includes(e.role) && e.role !== 'manager')
+      ? employees.filter(e => e.role !== 'manager')
       : employees.filter(e => e.role === this.roleFilter);
 
     let html = `
@@ -862,7 +862,7 @@ const AdminViews = {
     for (const a of dayAvailability) avMap[a.employee_id] = a;
 
     const filteredEmps = this.roleFilter === 'all'
-      ? employees.filter(e => !SELF_LOG_ROLES.includes(e.role) && e.role !== 'manager')
+      ? employees.filter(e => e.role !== 'manager')
       : employees.filter(e => e.role === this.roleFilter);
 
     const shiftedIds = new Set(dayShifts.map(s => s.employee_id));
@@ -987,8 +987,8 @@ const AdminViews = {
 
     UI.hideLoading();
 
-    // Pouze role, které mají směny (ne self-log role ani manager)
-    const shiftableEmps = employees.filter(e => !SELF_LOG_ROLES.includes(e.role) && e.role !== 'manager');
+    // Všechny role kromě správce mohou mít směny
+    const shiftableEmps = employees.filter(e => e.role !== 'manager');
 
     const isEdit = !!shift;
     const defaultDate  = shift?.date || presetDate || dateKey(new Date());
