@@ -14,19 +14,15 @@ const AdminViews = {
   },
 
   renderNav() {
-    // Přidej tlačítko 👁 do topbaru
-    setTimeout(() => {
-      const topbar = document.querySelector('.app-topbar');
-      if (topbar && !document.getElementById('emp-view-btn')) {
-        const btn = document.createElement('button');
-        btn.id = 'emp-view-btn';
-        btn.className = 'btn btn-sm btn-secondary';
-        btn.style.cssText = 'margin-left:auto;margin-right:12px';
-        btn.innerHTML = '👁 Pohled zaměstnance';
-        btn.onclick = () => AdminViews.switchToEmployeeView();
-        topbar.appendChild(btn);
-      }
-    }, 50);
+    // Nastav obsah topbaru — titulek + tlačítko vpravo
+    const topbar = document.querySelector('.app-topbar');
+    if (topbar) {
+      topbar.innerHTML = `
+        <button class="btn btn-ghost topbar-menu" onclick="App.toggleSidebar()">☰</button>
+        <span class="topbar-title">Koupaliště</span>
+        <button class="btn btn-sm btn-secondary" style="margin-left:auto" onclick="AdminViews.switchToEmployeeView()">👁 Pohled zaměstnance</button>
+      `;
+    }
 
     const nav = document.getElementById('app-nav');
     nav.innerHTML = `
