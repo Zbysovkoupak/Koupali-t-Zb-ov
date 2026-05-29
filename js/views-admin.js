@@ -30,6 +30,7 @@ const AdminViews = {
         <a class="nav-item" id="nav-admin-reports"     onclick="AdminViews.showReports()">📊 Měsíční přehled</a>
         <a class="nav-item" id="nav-admin-settings"    onclick="AdminViews.showSettings()">⚙️ Nastavení</a>
       </nav>
+      <button class="btn btn-secondary nav-logout" style="margin-bottom:8px" onclick="AdminViews.switchToEmployeeView()">👁 Pohled zaměstnance</button>
       <button class="btn btn-ghost nav-logout" onclick="App.logout()">Odhlásit</button>
     `;
   },
@@ -1555,6 +1556,70 @@ const AdminViews = {
         <button class="btn btn-primary" onclick="AdminViews.saveRates('${role}')">Uložit sazby</button>
       </div>
     `;
+  },
+
+  // ─── Pohled jako zaměstnanec (pro testování) ─────────────────
+
+  async switchToEmployeeView() {
+    try {
+      UI.showLoading('Načítám zaměstnance...');
+      const employees = await Employees.getAll();
+      UI.hideLoading();
+
+      const optionsHTML = employees.map(e =>
+        `<option value="${e.id}">${escapeHtml(e.name)} — ${ROLE_LABELS[e.role] || e.role}</option>`
+      ).join('');
+
+      const formHTML = `
+        <div class="form-stack">
+          <p style="color:var(--text-muted);margin-bottom:12px">
+            Vyber zaměstnance jehož pohled chceš zobrazit. Vrátit se zpět můžeš přes tlačítko <strong>← Zpět do adminu</strong>.
+          </p>
+          <div class="form-group">
+            <label class="form-label">Zaměstnanec</label>
+            <select id="emp-view-pick" class="form-control">
+              ${optionsHTML}
+            </select>
+          </div>
+        </div>
+      `;
+
+      const action = await UI.showModal('👁 Pohled zaměstnance', formHTML, [
+        { label: 'Zobrazit', action: 'show', class: 'btn-primary' },
+        { label: 'Zrušit', action: 'cancel', class: 'btn-secondary' }
+      ]);
+
+      if (action !== 'show') return;
+
+      const empId = document.getElementById('emp-view-pick')?.value;
+      const emp = employees.find(e => e.id === empId);
+      if (!emp) return;
+
+      // Přepni na pohled zaměstnance
+      App._renderAppShell();
+      EmployeeViews.init(emp);
+
+      // Přidej tlačítko "Zpět do adminu" do topbaru
+      setTimeout(() => {
+        const topbar = document.querySelector('.app-topbar');
+        if (topbar && !document.getElementById('back-to-admin-btn')) {
+          const btn = document.createElement('button');
+          btn.id = 'back-to-admin-btn';
+          btn.className = 'btn btn-secondary btn-sm';
+          btn.style.cssText = 'margin-left:auto;margin-right:12px;background:#fef3c7;color:#92400e;border-color:#fde68a';
+          btn.innerHTML = '← Zpět do adminu';
+          btn.onclick = () => {
+            App._renderAppShell();
+            AdminViews.init();
+          };
+          topbar.appendChild(btn);
+        }
+      }, 100);
+
+    } catch (e) {
+      UI.hideLoading();
+      UI.toast('Chyba: ' + e.message, 'error');
+    }
   },
 
   async saveRates(role) {
