@@ -14,6 +14,20 @@ const AdminViews = {
   },
 
   renderNav() {
+    // Přidej tlačítko 👁 do topbaru
+    setTimeout(() => {
+      const topbar = document.querySelector('.app-topbar');
+      if (topbar && !document.getElementById('emp-view-btn')) {
+        const btn = document.createElement('button');
+        btn.id = 'emp-view-btn';
+        btn.className = 'btn btn-sm btn-secondary';
+        btn.style.cssText = 'margin-left:auto;margin-right:12px';
+        btn.innerHTML = '👁 Pohled zaměstnance';
+        btn.onclick = () => AdminViews.switchToEmployeeView();
+        topbar.appendChild(btn);
+      }
+    }, 50);
+
     const nav = document.getElementById('app-nav');
     nav.innerHTML = `
       <div class="nav-user">
@@ -30,7 +44,6 @@ const AdminViews = {
         <a class="nav-item" id="nav-admin-reports"     onclick="AdminViews.showReports()">📊 Měsíční přehled</a>
         <a class="nav-item" id="nav-admin-settings"    onclick="AdminViews.showSettings()">⚙️ Nastavení</a>
       </nav>
-      <button class="btn btn-secondary nav-logout" style="margin-bottom:8px" onclick="AdminViews.switchToEmployeeView()">👁 Pohled zaměstnance</button>
       <button class="btn btn-ghost nav-logout" onclick="App.logout()">Odhlásit</button>
     `;
   },
