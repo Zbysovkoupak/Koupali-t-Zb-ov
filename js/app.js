@@ -412,7 +412,12 @@ const App = {
       UI.hideLoading();
       if (empData) {
         this._currentEmployee = empData;
-        this.showEmployeeApp(empData);
+        // Správce dostane read-only admin pohled
+        if (empData.role === 'manager') {
+          this.showManagerApp(empData);
+        } else {
+          this.showEmployeeApp(empData);
+        }
       } else {
         UI.toast('Profil nenalezen. Kontaktuj admina.', 'error');
         await Auth.signOut();
@@ -436,6 +441,11 @@ const App = {
   showEmployeeApp(employee) {
     this._renderAppShell();
     EmployeeViews.init(employee);
+  },
+
+  showManagerApp(employee) {
+    this._renderAppShell();
+    ManagerViews.init(employee);
   },
 
   _renderAppShell() {

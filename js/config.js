@@ -15,15 +15,24 @@ const SEASON_END = new Date(new Date().getFullYear(), 8, 30); // 30. září akt
 
 // Výchozí sazby (Kč/hod) — admin může změnit v nastavení
 const DEFAULT_RATES = {
-  lifeguard: { weekday: 120, weekend: 150, holiday: 180 },
-  cashier:   { weekday: 110, weekend: 140, holiday: 170 }
+  lifeguard:   { weekday: 120, weekend: 150, holiday: 180 },
+  cashier:     { weekday: 110, weekend: 140, holiday: 170 },
+  maintenance: { weekday: 130, weekend: 160, holiday: 190 },
+  chemist:     { weekday: 130, weekend: 160, holiday: 190 },
+  manager:     { weekday: 150, weekend: 180, holiday: 210 }
 };
 
 // Přeložené názvy rolí
 const ROLE_LABELS = {
-  lifeguard: 'Plavčík',
-  cashier:   'Pokladní'
+  lifeguard:   'Plavčík',
+  cashier:     'Pokladní',
+  maintenance: 'Údržba',
+  chemist:     'Chemik',
+  manager:     'Správce'
 };
+
+// Role, které zadávají hodiny samy (ne přes dostupnost/směny)
+const SELF_LOG_ROLES = ['maintenance', 'chemist'];
 
 // Typy dnů
 const DAY_TYPE_LABELS = {

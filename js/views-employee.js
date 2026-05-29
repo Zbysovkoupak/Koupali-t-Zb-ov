@@ -26,8 +26,11 @@ const EmployeeViews = {
       </div>
       <nav class="nav-links">
         <a class="nav-item" id="nav-emp-dashboard" onclick="EmployeeViews.showDashboard()">🏠 Přehled</a>
-        <a class="nav-item" id="nav-emp-availability" onclick="EmployeeViews.showAvailability()">📅 Moje dostupnost</a>
-        <a class="nav-item" id="nav-emp-shifts" onclick="EmployeeViews.showMyShifts()">🕐 Moje směny</a>
+        ${SELF_LOG_ROLES.includes(this.currentUser.role)
+          ? `<a class="nav-item" id="nav-emp-worklogs" onclick="EmployeeViews.showWorkLogs()">📝 Výkaz práce</a>`
+          : `<a class="nav-item" id="nav-emp-availability" onclick="EmployeeViews.showAvailability()">📅 Moje dostupnost</a>
+             <a class="nav-item" id="nav-emp-shifts" onclick="EmployeeViews.showMyShifts()">🕐 Moje směny</a>`
+        }
         <a class="nav-item" id="nav-emp-profile" onclick="EmployeeViews.showProfile()">👤 Můj profil</a>
       </nav>
       <button class="btn btn-ghost nav-logout" onclick="App.logout()">Odhlásit</button>
@@ -50,7 +53,7 @@ const EmployeeViews = {
         Shifts.getByEmployee(this.currentUser.id, year, month),
         Availability.getByEmployee(this.currentUser.id,
           `${year}-${pad2(month)}-01`,
-          `${year}-${pad2(month)}-31`)
+          `${year}-${pad2(month)}-${pad2(new Date(year, month, 0).getDate())}`)
       ]);
 
       const upcomingShifts = shifts
@@ -572,6 +575,12 @@ const EmployeeViews = {
         </div>
 
         <div class="form-group">
+          <label class="form-label">Telefon</label>
+          <input type="tel" id="prof-phone" class="form-control"
+            value="${escapeHtml(u.phone || '')}" placeholder="+420 123 456 789">
+        </div>
+
+        <div class="form-group">
           <label class="form-label">Datum narození</label>
           <input type="date" id="prof-birth" class="form-control"
             value="${u.birth_date || ''}"
@@ -602,6 +611,7 @@ const EmployeeViews = {
 
   async saveProfile() {
     const email = document.getElementById('prof-email')?.value.trim();
+    const phone = document.getElementById('prof-phone')?.value.trim() || null;
     const birth = document.getElementById('prof-birth')?.value || null;
 
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -619,7 +629,7 @@ const EmployeeViews = {
 
     try {
       UI.showLoading('Ukládám...');
-      const updates = { email, is_minor: isMinor };
+      const updates = { email, phone, is_minor: isMinor };
       if (birth) updates.birth_date = birth;
 
       const { error } = await getSupabase()
@@ -627,7 +637,7 @@ const EmployeeViews = {
       if (error) throw error;
 
       // Aktualizuj lokální objekt
-      this.currentUser = { ...this.currentUser, email, is_minor: isMinor, birth_date: birth || this.currentUser.birth_date };
+      this.currentUser = { ...this.currentUser, email, phone, is_minor: isMinor, birth_date: birth || this.currentUser.birth_date };
       App._currentEmployee = this.currentUser;
 
       UI.hideLoading();
@@ -636,6 +646,133 @@ const EmployeeViews = {
     } catch (e) {
       UI.hideLoading();
       UI.toast('Chyba ukládání: ' + e.message, 'error');
+    }
+  },
+
+  // ─── Výkaz práce (chemici, údržba) ──────────────────────────
+
+  async showWorkLogs() {
+    UI.setActiveNav('emp-worklogs');
+    const main = document.getElementById('app-main');
+    main.innerHTML = '<div class="loading-placeholder">Načítám...</div>';
+
+    const year  = this.currentYear;
+    const month = this.currentMonth;
+    const lastDay = new Date(year, month, 0).getDate();
+    const fromDate = `${year}-${pad2(month)}-01`;
+    const toDate   = `${year}-${pad2(month)}-${pad2(lastDay)}`;
+
+    try {
+      const logs = await WorkLogs.getByEmployee(this.currentUser.id, fromDate, toDate);
+      const totalHours = logs.reduce((s, l) => s + parseFloat(l.hours || 0), 0);
+
+      main.innerHTML = `
+        <div class="page-header">
+          <h1>📝 Výkaz práce</h1>
+          <div class="header-controls">
+            <div class="month-nav">
+              <button class="btn btn-ghost" onclick="EmployeeViews.wlPrevMonth()">‹</button>
+              <span class="month-label">${CZ_MONTHS[month - 1]} ${year}</span>
+              <button class="btn btn-ghost" onclick="EmployeeViews.wlNextMonth()">›</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-card"><div class="stat-value">${totalHours.toFixed(1)}</div><div class="stat-label">Hodin v ${CZ_MONTHS[month-1]}</div></div>
+          <div class="stat-card"><div class="stat-value">${logs.length}</div><div class="stat-label">Záznamů</div></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Záznamy — ${CZ_MONTHS[month - 1]} ${year}</h2>
+            <button class="btn btn-primary btn-sm" onclick="EmployeeViews.openAddWorkLog()">+ Přidat hodiny</button>
+          </div>
+          ${logs.length === 0
+            ? UI.emptyState('Žádné záznamy v tomto měsíci', '📝')
+            : `<table class="data-table">
+                <thead><tr><th>Datum</th><th>Hodin</th><th>Popis práce</th><th>Akce</th></tr></thead>
+                <tbody>
+                  ${logs.map(l => `<tr>
+                    <td>${UI.formatDate(l.date)}</td>
+                    <td><strong>${parseFloat(l.hours)}</strong></td>
+                    <td>${escapeHtml(l.description || '–')}</td>
+                    <td><button class="btn btn-sm btn-ghost btn-danger-ghost" onclick="EmployeeViews.deleteWorkLog('${l.id}')">🗑 Smazat</button></td>
+                  </tr>`).join('')}
+                </tbody>
+              </table>`
+          }
+        </div>
+      `;
+    } catch (e) {
+      main.innerHTML = `<div class="error-state">Chyba: ${escapeHtml(e.message)}</div>`;
+    }
+  },
+
+  wlPrevMonth() {
+    this.currentMonth--;
+    if (this.currentMonth < 1) { this.currentMonth = 12; this.currentYear--; }
+    this.showWorkLogs();
+  },
+
+  wlNextMonth() {
+    this.currentMonth++;
+    if (this.currentMonth > 12) { this.currentMonth = 1; this.currentYear++; }
+    this.showWorkLogs();
+  },
+
+  async openAddWorkLog() {
+    const today = new Date().toISOString().split('T')[0];
+    const formHTML = `
+      <form class="form-stack">
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Datum *</label>
+            <input type="date" id="wl-date" class="form-control" value="${today}" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Počet hodin *</label>
+            <input type="number" id="wl-hours" class="form-control" step="0.5" min="0.5" max="16" placeholder="4" required>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Co jsi dělal/a? *</label>
+          <input type="text" id="wl-desc" class="form-control" placeholder="Příprava chemikálií, úprava vody…" required>
+        </div>
+      </form>
+    `;
+    const action = await UI.showModal('📝 Přidat hodiny', formHTML, [
+      { label: 'Přidat', action: 'save', class: 'btn-primary' },
+      { label: 'Zrušit', action: 'cancel', class: 'btn-secondary' }
+    ]);
+    if (action !== 'save') return;
+    const date  = document.getElementById('wl-date')?.value;
+    const hours = parseFloat(document.getElementById('wl-hours')?.value);
+    const desc  = document.getElementById('wl-desc')?.value.trim();
+    if (!date || !hours || hours <= 0 || !desc) {
+      UI.toast('Vyplň datum, hodiny a popis', 'warning'); return;
+    }
+    try {
+      UI.showLoading('Ukládám...');
+      await WorkLogs.create({ employee_id: this.currentUser.id, date, hours, description: desc });
+      UI.hideLoading();
+      UI.toast('Hodiny přidány ✓', 'success');
+      this.showWorkLogs();
+    } catch (e) {
+      UI.hideLoading();
+      UI.toast('Chyba: ' + e.message, 'error');
+    }
+  },
+
+  async deleteWorkLog(id) {
+    const ok = await UI.confirm('Smazat tento záznam?', 'Smazat', true);
+    if (!ok) return;
+    try {
+      await WorkLogs.delete(id);
+      UI.toast('Smazáno', 'success');
+      this.showWorkLogs();
+    } catch (e) {
+      UI.toast('Chyba: ' + e.message, 'error');
     }
   },
 

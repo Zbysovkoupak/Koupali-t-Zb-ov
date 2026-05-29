@@ -280,6 +280,99 @@ const Shifts = {
   }
 };
 
+// ─── VÝKAZY PRÁCE (chemici, údržba) ─────────────────────────
+
+const WorkLogs = {
+  async getByEmployee(employeeId, fromDate, toDate) {
+    let q = getSupabase().from('work_logs').select('*').eq('employee_id', employeeId);
+    if (fromDate) q = q.gte('date', fromDate);
+    if (toDate)   q = q.lte('date', toDate);
+    const { data, error } = await q.order('date', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  },
+
+  async getAllForMonth(year, month) {
+    const from = `${year}-${String(month).padStart(2,'0')}-01`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const to = `${year}-${String(month).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
+    const { data, error } = await getSupabase()
+      .from('work_logs').select('*').gte('date', from).lte('date', to);
+    if (error) throw error;
+    return data || [];
+  },
+
+  async create(log) {
+    const { data, error } = await getSupabase()
+      .from('work_logs').insert([log]).select().single();
+    if (error) throw error;
+    return data;
+  },
+
+  async delete(id) {
+    const { error } = await getSupabase().from('work_logs').delete().eq('id', id);
+    if (error) throw error;
+  }
+};
+
+// ─── EXTRA HODINY (admin přidává bonus) ─────────────────────
+
+const ExtraHours = {
+  async getByEmployee(employeeId, fromDate, toDate) {
+    let q = getSupabase().from('extra_hours').select('*').eq('employee_id', employeeId);
+    if (fromDate) q = q.gte('date', fromDate);
+    if (toDate)   q = q.lte('date', toDate);
+    const { data, error } = await q.order('date', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  },
+
+  async getAllForMonth(year, month) {
+    const from = `${year}-${String(month).padStart(2,'0')}-01`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const to = `${year}-${String(month).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
+    const { data, error } = await getSupabase()
+      .from('extra_hours').select('*').gte('date', from).lte('date', to);
+    if (error) throw error;
+    return data || [];
+  },
+
+  async create(entry) {
+    const { data, error } = await getSupabase()
+      .from('extra_hours').insert([entry]).select().single();
+    if (error) throw error;
+    return data;
+  },
+
+  async delete(id) {
+    const { error } = await getSupabase().from('extra_hours').delete().eq('id', id);
+    if (error) throw error;
+  }
+};
+
+// ─── ABSENCE / DOVOLENÁ ──────────────────────────────────────
+
+const Absences = {
+  async getByEmployee(employeeId) {
+    const { data, error } = await getSupabase()
+      .from('absences').select('*').eq('employee_id', employeeId).order('date_from');
+    if (error) throw error;
+    return data || [];
+  },
+
+  async create(entry) {
+    const { data, error } = await getSupabase()
+      .from('absences').insert([entry]).select().single();
+    if (error) throw error;
+    return data;
+  },
+
+  async delete(id) {
+    const { error } = await getSupabase().from('absences').delete().eq('id', id);
+    if (error) throw error;
+  }
+};
+
 // ─── SAZBY ───────────────────────────────────────────────────
 
 const Rates = {
@@ -298,8 +391,11 @@ const Rates = {
   _toObject(rows) {
     // Převede pole řádků na { lifeguard: {weekday, weekend, holiday}, cashier: {...} }
     const result = {
-      lifeguard: { weekday: 120, weekend: 150, holiday: 180 },
-      cashier:   { weekday: 110, weekend: 140, holiday: 170 }
+      lifeguard:   { weekday: 120, weekend: 150, holiday: 180 },
+      cashier:     { weekday: 110, weekend: 140, holiday: 170 },
+      maintenance: { weekday: 130, weekend: 160, holiday: 190 },
+      chemist:     { weekday: 130, weekend: 160, holiday: 190 },
+      manager:     { weekday: 150, weekend: 180, holiday: 210 }
     };
     for (const row of rows) {
       if (!result[row.role]) result[row.role] = {};
@@ -369,18 +465,61 @@ const Reports = {
 
   // Sestaví přehled pro všechny zaměstnance za měsíc
   async buildMonthReport(year, month) {
-    const shifts    = await Shifts.getAllForMonth(year, month);
-    const employees = await Employees.getAll();
+    const [shifts, employees, rates, workLogs, extraHours] = await Promise.all([
+      Shifts.getAllForMonth(year, month),
+      Employees.getAll(),
+      Rates.getAll(),
+      WorkLogs.getAllForMonth(year, month),
+      ExtraHours.getAllForMonth(year, month)
+    ]);
 
-    // Seskupit směny podle employee_id
-    const shiftsByEmployee = {};
+    const shiftsByEmp    = {};
+    const workLogsByEmp  = {};
+    const extraByEmp     = {};
+
     for (const s of shifts) {
-      if (!shiftsByEmployee[s.employee_id]) shiftsByEmployee[s.employee_id] = [];
-      shiftsByEmployee[s.employee_id].push(s);
+      if (!shiftsByEmp[s.employee_id]) shiftsByEmp[s.employee_id] = [];
+      shiftsByEmp[s.employee_id].push(s);
+    }
+    for (const l of workLogs) {
+      if (!workLogsByEmp[l.employee_id]) workLogsByEmp[l.employee_id] = [];
+      workLogsByEmp[l.employee_id].push(l);
+    }
+    for (const e of extraHours) {
+      if (!extraByEmp[e.employee_id]) extraByEmp[e.employee_id] = [];
+      extraByEmp[e.employee_id].push(e);
     }
 
-    return employees.map(emp =>
-      this.buildEmployeeSummary(emp, shiftsByEmployee[emp.id] || [])
-    );
+    return employees.map(emp => {
+      const summary = this.buildEmployeeSummary(emp, shiftsByEmp[emp.id] || []);
+
+      // Work logs (chemici, údržba — sami zadávají hodiny)
+      const empLogs = workLogsByEmp[emp.id] || [];
+      const logHours    = empLogs.reduce((s, l) => s + parseFloat(l.hours || 0), 0);
+      const logEarnings = empLogs.reduce((s, l) => {
+        const rate = parseFloat(l.rate_per_hour) || (rates[emp.role]?.weekday || 0);
+        return s + parseFloat(l.hours || 0) * rate;
+      }, 0);
+
+      // Extra hodiny (admin přidává bonus)
+      const empExtra = extraByEmp[emp.id] || [];
+      const extraHrs = empExtra.reduce((s, e) => s + parseFloat(e.hours || 0), 0);
+      const extraEarnings = empExtra.reduce((s, e) => {
+        const rate = parseFloat(e.rate_per_hour) || (rates[emp.role]?.weekday || 0);
+        return s + parseFloat(e.hours || 0) * rate;
+      }, 0);
+
+      summary.hours_worklogs    = +logHours.toFixed(2);
+      summary.earnings_worklogs = +logEarnings.toFixed(2);
+      summary.hours_extra       = +extraHrs.toFixed(2);
+      summary.earnings_extra    = +extraEarnings.toFixed(2);
+      summary.hours_total       = +(summary.hours_total + logHours + extraHrs).toFixed(2);
+      summary.earnings_total    = +(summary.earnings_total + logEarnings + extraEarnings).toFixed(2);
+      summary.amount_to_pay     = summary.earnings_total;
+      summary.work_logs         = empLogs;
+      summary.extra_hours_list  = empExtra;
+
+      return summary;
+    });
   }
 };
