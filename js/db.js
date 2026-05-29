@@ -373,6 +373,42 @@ const Absences = {
   }
 };
 
+// ─── LOGY AKTIVIT ────────────────────────────────────────
+
+const ActivityLogs = {
+  async log(employeeId, action, detail) {
+    try {
+      await getSupabase()
+        .from('activity_logs')
+        .insert([{ employee_id: employeeId, action, detail }]);
+    } catch (e) {
+      // Logování je neblokující — chybu ignorujeme
+      console.warn('ActivityLog chyba:', e.message);
+    }
+  },
+
+  async getByEmployee(employeeId, limit = 50) {
+    const { data, error } = await getSupabase()
+      .from('activity_logs')
+      .select('*')
+      .eq('employee_id', employeeId)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (error) throw error;
+    return data || [];
+  },
+
+  async getAll(limit = 200) {
+    const { data, error } = await getSupabase()
+      .from('activity_logs')
+      .select('*, employees(name, role)')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (error) throw error;
+    return data || [];
+  }
+};
+
 // ─── SAZBY ───────────────────────────────────────────────────
 
 const Rates = {

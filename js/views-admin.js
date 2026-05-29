@@ -40,6 +40,7 @@ const AdminViews = {
         <a class="nav-item" id="nav-admin-shifts"      onclick="AdminViews.showShifts()">📋 Plánování směn</a>
         <a class="nav-item" id="nav-admin-reports"     onclick="AdminViews.showReports()">📊 Měsíční přehled</a>
         <a class="nav-item" id="nav-admin-settings"    onclick="AdminViews.showSettings()">⚙️ Nastavení</a>
+        <a class="nav-item" id="nav-admin-logs"        onclick="AdminViews.showActivityLogs()">📋 Log aktivit</a>
       </nav>
       <button class="btn btn-ghost nav-logout" onclick="App.logout()">Odhlásit</button>
     `;
@@ -355,12 +356,13 @@ const AdminViews = {
       const fromDate = `${year}-${pad2(month)}-01`;
       const toDate   = `${year}-${pad2(month)}-${pad2(lastDay)}`;
 
-      const [emp, shifts, availability, absences, rates] = await Promise.all([
+      const [emp, shifts, availability, absences, rates, activityLogs] = await Promise.all([
         Employees.getById(id),
         Shifts.getByEmployee(id, year, month),
         Availability.getByEmployee(id, fromDate, toDate),
         Absences.getByEmployee(id),
-        Rates.getAll()
+        Rates.getAll(),
+        ActivityLogs.getByEmployee(id, 30)
       ]);
 
       // Work logs a extra hours (pro všechny role)
@@ -487,6 +489,13 @@ const AdminViews = {
           ${this._renderAvailabilityList(availability, holidays)}
         </div>
         ` : ''}
+
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">📋 Log aktivit <span style="font-size:.8rem;font-weight:400;color:var(--text-muted)">(posledních 30 záznamů)</span></h2>
+          </div>
+          ${this._renderActivityLogs(activityLogs)}
+        </div>
       `;
 
       this._detailEmployeeId = id;
@@ -494,6 +503,27 @@ const AdminViews = {
       UI.hideLoading();
       main.innerHTML = `<div class="error-state">Chyba: ${escapeHtml(e.message)}</div>`;
     }
+  },
+
+  _renderActivityLogs(logs) {
+    if (!logs || logs.length === 0) return '<p class="text-muted" style="padding:16px">Žádné zaznamenané aktivity.</p>';
+    return `
+      <div style="max-height:320px;overflow-y:auto">
+        <table class="data-table">
+          <thead><tr><th>Datum a čas</th><th>Akce</th></tr></thead>
+          <tbody>
+            ${logs.map(l => {
+              const dt = new Date(l.created_at);
+              const dateStr = `${dt.getDate()}. ${dt.getMonth()+1}. ${dt.getFullYear()} ${pad2(dt.getHours())}:${pad2(dt.getMinutes())}`;
+              return `<tr>
+                <td style="white-space:nowrap;color:var(--text-muted);font-size:.82rem">${dateStr}</td>
+                <td style="font-size:.85rem">${escapeHtml(l.detail || l.action)}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
   },
 
   _renderWorkLogs(logs, empId) {
@@ -1672,6 +1702,65 @@ const AdminViews = {
         <button class="btn btn-primary" onclick="AdminViews.saveRates('${role}')">Uložit sazby</button>
       </div>
     `;
+  },
+
+  // ─── Globální log aktivit ────────────────────────────────────
+
+  async showActivityLogs() {
+    UI.setActiveNav('admin-logs');
+    const main = document.getElementById('app-main');
+    UI.showLoading('Načítám logy...');
+
+    try {
+      const logs = await ActivityLogs.getAll(200);
+      UI.hideLoading();
+
+      main.innerHTML = `
+        <div class="page-header">
+          <h1>📋 Log aktivit zaměstnanců</h1>
+          <p class="page-subtitle">Posledních 200 záznamů</p>
+        </div>
+
+        <div class="card">
+          ${logs.length === 0
+            ? UI.emptyState('Zatím žádné aktivity', '📋')
+            : `<table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Datum a čas</th>
+                    <th>Zaměstnanec</th>
+                    <th>Role</th>
+                    <th>Akce</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${logs.map(l => {
+                    const dt = new Date(l.created_at);
+                    const dateStr = `${dt.getDate()}. ${dt.getMonth()+1}. ${dt.getFullYear()} ${pad2(dt.getHours())}:${pad2(dt.getMinutes())}`;
+                    const name = l.employees?.name || '–';
+                    const role = ROLE_LABELS[l.employees?.role] || l.employees?.role || '–';
+                    // Zvýrazni časté změny — detekuj opakování ve stejný den
+                    return `<tr>
+                      <td style="white-space:nowrap;color:var(--text-muted);font-size:.82rem">${dateStr}</td>
+                      <td>
+                        <div class="emp-cell">
+                          ${UI.avatarHTML(name, 24)}
+                          <span style="font-size:.85rem">${escapeHtml(name)}</span>
+                        </div>
+                      </td>
+                      <td><span class="badge badge-role-${l.employees?.role || ''}">${role}</span></td>
+                      <td style="font-size:.85rem">${escapeHtml(l.detail || l.action)}</td>
+                    </tr>`;
+                  }).join('')}
+                </tbody>
+              </table>`
+          }
+        </div>
+      `;
+    } catch (e) {
+      UI.hideLoading();
+      main.innerHTML = `<div class="error-state">Chyba: ${escapeHtml(e.message)}</div>`;
+    }
   },
 
   // ─── Pohled jako zaměstnanec (pro testování) ─────────────────

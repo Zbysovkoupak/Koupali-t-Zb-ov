@@ -215,6 +215,15 @@ const EmployeeViews = {
             <button class="btn btn-ghost" onclick="EmployeeViews.avNextMonth()">›</button>
           </div>
         </div>
+
+        <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:10px;padding:14px 18px;margin-bottom:16px;display:flex;gap:12px;align-items:flex-start">
+          <span style="font-size:1.3rem;line-height:1">⚠️</span>
+          <div>
+            <strong style="color:#92400e;display:block;margin-bottom:4px">Potvrzená směna je závazná!</strong>
+            <span style="color:#78350f;font-size:.88rem">Pokud ti směnu potvrdíme, je to závazné. Pokud se z jakýchkoliv důvodů nemůžeš dostavit, dej nám vědět nejméně <strong>3 dny dopředu</strong>. Děkujeme!</span>
+          </div>
+        </div>
+
         <div class="card">
           <div class="calendar-legend">
             <span class="legend-item"><span class="cal-day-dot weekday"></span> Prac. den</span>
@@ -390,7 +399,23 @@ const EmployeeViews = {
 
     try {
       UI.showLoading('Ukládám...');
+
+      // Načti předchozí stav pro log
+      const prevList = await Availability.getByEmployee(this.currentUser.id, dateStr, dateStr);
+      const prev = prevList?.[0];
+
       await Availability.upsert(this.currentUser.id, dateStr, status, fromTime, toTime);
+
+      // Zaloguj změnu
+      const statusLabels = { available: 'Může', partial: 'Může částečně', unavailable: 'Nemůže' };
+      const newLabel  = statusLabels[status] || status;
+      const prevLabel = prev ? (statusLabels[prev.status] || prev.status) : 'nenastaveno';
+      const timeNote  = (status === 'partial' && fromTime && toTime) ? ` (${fromTime}–${toTime})` : '';
+      const detail    = prev
+        ? `Změna dostupnosti ${dateStr}: ${prevLabel} → ${newLabel}${timeNote}`
+        : `Nastavena dostupnost ${dateStr}: ${newLabel}${timeNote}`;
+      ActivityLogs.log(this.currentUser.id, 'availability_changed', detail);
+
       UI.hideLoading();
       UI.toast('Dostupnost uložena', 'success');
       this._renderAvailabilityMonth();
