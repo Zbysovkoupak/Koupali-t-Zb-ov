@@ -757,6 +757,7 @@ const AdminViews = {
           <span class="legend-item"><span class="cal-day-dot holiday"></span> Svátek</span>
           <span class="legend-item"><span class="cal-name-tag cal-name-confirmed" style="font-size:.7rem">AB</span> Potvrzená směna</span>
           <span class="legend-item"><span class="cal-name-tag cal-name-want" style="font-size:.7rem">CD</span> Chce směnu</span>
+          <span class="legend-item"><span class="cal-name-tag cal-name-cant" style="font-size:.7rem">EF</span> Nemůže</span>
         </div>
     `;
 
@@ -799,6 +800,10 @@ const AdminViews = {
         !confirmedEmpIds.has(e.id)
       );
 
+      const cantShift = filteredEmps.filter(e =>
+        avIndex[`${e.id}_${key}`]?.status === 'unavailable'
+      );
+
       const initials = name => name.trim().split(' ').map(p => p[0] || '').join('').toUpperCase().substring(0, 2);
 
       const confirmedHTML = confirmedShifts.map(s =>
@@ -807,11 +812,14 @@ const AdminViews = {
       const wantHTML = wantShift.map(e =>
         `<span class="cal-name-tag cal-name-want" title="${escapeHtml(e.name)}">${initials(e.name)}</span>`
       ).join('');
+      const cantHTML = cantShift.map(e =>
+        `<span class="cal-name-tag cal-name-cant" title="${escapeHtml(e.name)} — nemůže">${initials(e.name)}</span>`
+      ).join('');
 
       html += `
         <div class="${cls}" onclick="AdminViews.openDayPanel('${key}')">
           <div class="cal-day-num">${d}${holName ? ` <span class="cal-holiday-label">${escapeHtml(holName)}</span>` : ''}</div>
-          <div class="cal-names-row">${confirmedHTML}${wantHTML}</div>
+          <div class="cal-names-row">${confirmedHTML}${wantHTML}${cantHTML}</div>
         </div>
       `;
     }
@@ -863,6 +871,10 @@ const AdminViews = {
       const av = avMap[e.id];
       return av && (av.status === 'available' || av.status === 'partial');
     });
+
+    const unavailableEmps = filteredEmps.filter(e =>
+      avMap[e.id]?.status === 'unavailable'
+    );
 
     const panelHTML = `
       <div class="day-panel">
@@ -924,6 +936,18 @@ const AdminViews = {
             }).join('')}
           </div>`
         }
+
+        ${unavailableEmps.length > 0 ? `
+        <h3 style="color:#ef4444">🚫 Nemůže přijít (${unavailableEmps.length})</h3>
+        <div class="avail-list">
+          ${unavailableEmps.map(e => `
+            <div class="avail-emp-row">
+              <div><strong>${escapeHtml(e.name)}</strong> <span class="badge badge-neutral">${ROLE_LABELS[e.role] || e.role}</span></div>
+              <span style="color:#ef4444;font-size:.85rem">nedostupný/á</span>
+            </div>
+          `).join('')}
+        </div>
+        ` : ''}
       </div>
     `;
 

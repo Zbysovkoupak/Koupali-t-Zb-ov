@@ -494,7 +494,7 @@ input[type="time"].form-control {
 .shift-cal-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: 4px;
+  gap: 5px;
 }
 
 .cal-header {
@@ -504,15 +504,15 @@ input[type="time"].form-control {
   text-transform: uppercase;
   letter-spacing: .04em;
   color: var(--text-muted);
-  padding: 6px 4px;
+  padding: 8px 4px;
 }
 .cal-header-weekend { color: var(--primary); }
 
 .cal-day {
-  min-height: 80px;
+  min-height: 110px;
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 6px;
+  padding: 8px;
   background: var(--surface);
   transition: border-color .15s, background .15s;
 }
@@ -550,10 +550,11 @@ input[type="time"].form-control {
 .colleague-tag { display: inline-block; background: #f0f9ff; color: #0369a1; border: 1px solid #bae6fd; border-radius: 6px; padding: 2px 7px; font-size: .78rem; margin: 1px 2px; white-space: nowrap; }
 
 /* ─── JMENOVKY V KALENDÁŘI ────────────────────────────────── */
-.cal-names-row { display: flex; flex-wrap: wrap; gap: 2px; margin-top: 3px; }
-.cal-name-tag { display: inline-block; border-radius: 4px; padding: 1px 5px; font-size: .68rem; font-weight: 600; white-space: nowrap; line-height: 1.4; }
+.cal-names-row { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 5px; }
+.cal-name-tag { display: inline-block; border-radius: 4px; padding: 2px 6px; font-size: .72rem; font-weight: 600; white-space: nowrap; line-height: 1.5; }
 .cal-name-confirmed { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
 .cal-name-want      { background: #fef9c3; color: #92400e; border: 1px solid #fde68a; }
+.cal-name-cant      { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
 .cal-want-count { display: inline-block; background: #fef9c3; color: #92400e; border: 1px solid #fde68a; border-radius: 4px; padding: 1px 5px; font-size: .68rem; font-weight: 600; white-space: nowrap; line-height: 1.4; }
 .badge-role-lifeguard { background: #dbeafe; color: #1e40af; }
 .badge-role-cashier   { background: #dcfce7; color: #166534; }
