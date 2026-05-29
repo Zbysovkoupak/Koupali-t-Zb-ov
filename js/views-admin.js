@@ -754,7 +754,8 @@ const AdminViews = {
         <div class="page-header">
           <h1>Plánování směn</h1>
           <div class="header-controls">
-            <button class="btn btn-primary btn-sm" onclick="AdminViews.sendShiftSummaries()" title="Pošle každému zaměstnanci souhrnný email se směnami">
+            <button class="btn btn-primary btn-sm" onclick="AdminViews.openAddShiftModal()">+ Přidat směnu</button>
+            <button class="btn btn-secondary btn-sm" onclick="AdminViews.sendShiftSummaries()" title="Pošle každému zaměstnanci souhrnný email se směnami">
               📧 Odeslat souhrny
             </button>
             <select class="form-control form-control-sm" id="role-filter" onchange="AdminViews.roleFilter=this.value;AdminViews.showShifts()">
